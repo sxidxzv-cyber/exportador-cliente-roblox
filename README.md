@@ -1,38 +1,61 @@
-# Exportador de scripts del cliente — v2
+# Exportador de lugar y scripts — Said v3
 
-Muestra el progreso, permite cancelar y guarda los resultados del descompilador del executor en archivos individuales.
+Guarda el contenido visible en el cliente como lugar de Roblox, conserva su jerarquía y crea una copia de los scripts en carpetas. El nombre del lugar termina en **_said.rbxl**. La descompilación usa la función que proporciona el executor; no implementa un descompilador nuevo.
 
 ## Ejecutarlo en Delta
 
-1. Entra en una experiencia de Roblox y abre el editor de Delta.
-2. Borra el contenido anterior, pega este comando y pulsa **EXECUTE**:
+1. Entra en Roblox y espera a que cargue el mapa.
+2. Abre el editor de Delta y ejecuta:
 
-```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/sxidxzv-cyber/exportador-cliente-roblox/main/ExportadorCliente.lua"))()
-```
+~~~lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/sxidxzv-cyber/exportador-cliente-roblox/main/ExportadorCliente.lua", true))()
+~~~
 
-3. Oculta el panel de Delta para ver la ventana del exportador, situada abajo.
+3. Oculta el panel de Delta para ver **Exportador de lugar · Said v3**.
+4. Espera a que termine la copia de scripts y después el guardado del lugar. La ventana muestra la carpeta y el archivo final.
 
-Si aparece **Faltan funciones del executor**, la ventana indica cuál falta. Se necesitan `decompile`, `writefile` y `makefolder`; este archivo usa las funciones que proporciona tu versión del executor.
+Se necesitan **writefile**, **makefolder**, acceso HTTP y **loadstring**. Si falta **decompile**, intenta guardar el mapa y las interfaces sin recuperar el código de scripts. Si falta **setfenv**, el serializador usa el descompilador nativo, sin reutilizar la captura inicial.
 
-## Resultados
+## Archivos que crea
 
-Se crea una carpeta `ClienteScripts_<PlaceId>_<identificador>` en el almacenamiento de archivos del executor. Su ubicación exacta depende del executor.
+En el almacenamiento de archivos del executor, dentro de una carpeta como **Exportacion_123456_ab12cd34_said**:
 
-- Un archivo `.lua` por cada resultado guardado.
-- `reporte.json` con rutas originales, recuentos y errores.
-- Los nombres llevan un número para evitar que scripts con el mismo nombre se sobrescriban.
+- **Lugar_123456_20261010_200000_ab12cd34_said.rbxl**: lugar binario con mapa, modelos, servicios e interfaces presentes en el cliente.
+- **scripts/**: archivos Lua organizados por servicio y carpetas originales. Los índices evitan sobrescribir scripts con nombres repetidos.
+- **reporte.json**: rutas originales, scripts guardados, fallos, límites, formato final y comprobaciones de escritura.
 
-## Alcance
+La ubicación física de esa carpeta depende de Delta y del sistema operativo. Este script no puede crear el archivo directamente en el chat ni confirmar dónde lo muestra el administrador de archivos de tu instalación.
 
-Revisa los scripts visibles en el cliente al iniciar: `LocalScript`, `ModuleScript` y `Script` con `RunContext.Client`, dentro de las ubicaciones que recorre el archivo.
+El lugar conserva la jerarquía de instancias. El contenido del jugador local se conserva como una instantánea en la carpeta **LocalPlayer** del lugar; puede requerir colocarlo en los servicios correspondientes para usarlo en otro proyecto. Los avatares de jugadores se omiten. Las carpetas del respaldo Lua se acortan cuando son demasiado profundas; las rutas completas permanecen en el reporte.
 
-La calidad del código recuperado depende de la función nativa `decompile`. Este exportador añade diagnósticos y organiza los resultados; no implementa un descompilador nuevo.
+## Formato y errores
 
-No recupera scripts exclusivos del servidor ni exporta mapas, modelos, interfaces o archivos `.rbxl`. No ejecuta el código recuperado.
+Se intenta primero un **.rbxl binario**, sin compresión. Antes de escribir se comprueba su cabecera, los límites de sus bloques y el bloque final. Si hay **readfile**, también se compara lo escrito con todos los datos originales. Esto no sustituye abrir y revisar el lugar en Roblox Studio.
 
-La cancelación y el límite de 15 segundos por script requieren que el descompilador permita ceder el hilo; una llamada nativa que bloquee el proceso puede impedir ambas cosas.
+Si falla el binario, se intenta un lugar XML con nombre terminado en **_said.rbxlx**. Ese archivo también se abre en Roblox Studio y se puede convertir a **.rbxl** con **Guardar como**. Nunca se cambia la extensión de un XML para presentarlo como binario. Si ambos intentos fallan, los scripts que ya se guardaron se conservan.
+
+La cancelación conserva los archivos completados. Durante la serialización espera a que la llamada en curso termine y descarta el resultado pendiente. El límite de 15 segundos del descompilador requiere que la función nativa permita ceder el hilo. Después de un bloqueo no inicia más llamadas de descompilación desde la captura inicial.
+
+## Lo que se puede recuperar
+
+Solo contenido que ya está disponible en el cliente. El código exclusivo de **ServerScriptService** y **ServerStorage** nunca llega al cliente y no se puede extraer con este script. Los objetos replicados usados por el servidor pueden aparecer, pero eso no recupera su lógica privada.
+
+Con **StreamingEnabled** pueden faltar zonas que todavía no se hayan cargado. Mallas, imágenes, sonidos y otros recursos externos se guardan como referencias; sus permisos siguen aplicando. El resultado no garantiza un juego completo o funcional. No se ejecuta el código recuperado ni se envía a un servicio de descompilación.
+
+## Dependencias y crédito
+
+Serialización de lugares: **UniversalSynSaveInstance https://discord.gg/wx4ThpAsmw**, de [luau/UniversalSynSaveInstance](https://github.com/luau/UniversalSynSaveInstance), bajo GNU AGPL v3. La licencia completa está en **USSI_LICENSE.txt**. El envoltorio y sus modificaciones se distribuyen con esa misma licencia.
+
+Revisiones utilizadas:
+
+- USSI: **089986506e7ab9c50d7065d48b36e3bfbd5f78d7**.
+- StreamBuffer y UniversalMethodFinder de luau/SomeHub: **beabe12be11b007777cfef0bffbe68dfb3f8b3b9**.
+- Base64 de daily3014/rbx-algorithms: **468dde82bdba89176157dcec90ba503b7046f5b3**.
+- llz4 de RiskoZS: **57d869215b7a061121f5492ecff245989638816a**.
+
+El 10 de octubre de 2026 se añadió este envoltorio con interfaz, organización, reporte, caché de scripts y validación del archivo. Al cargar USSI se sustituyen sus cuatro rutas de código auxiliar por las revisiones anteriores y su ruta de recursos LinkedSource por el dominio oficial assetdelivery.roblox.com. USSI descarga además metadatos de Roblox para conocer las propiedades de cada clase.
 
 ## Verificación
 
-Sintaxis y comportamiento revisados con simulaciones de exportación, funciones faltantes, fallos de escritura, cancelación y tiempo límite. No se ha probado en una instalación real de Delta.
+El envoltorio se comprueba con simulaciones de capacidades, cancelación, tiempos límite, archivos truncados, formatos incorrectos, fallos de escritura y alternativas de guardado. No se ha probado esta versión en una instalación real de Delta ni se ha abierto su resultado en Roblox Studio.
+
