@@ -1,4 +1,4 @@
-# Exportador de lugar y scripts — Said v3
+# Exportador de lugar y scripts — Said v3.1
 
 Guarda el contenido visible en el cliente como lugar de Roblox, conserva su jerarquía y crea una copia de los scripts en carpetas. El nombre del lugar termina en **_said.rbxl**. La descompilación usa la función que proporciona el executor; no implementa un descompilador nuevo.
 
@@ -11,7 +11,7 @@ Guarda el contenido visible en el cliente como lugar de Roblox, conserva su jera
 loadstring(game:HttpGet("https://raw.githubusercontent.com/sxidxzv-cyber/exportador-cliente-roblox/main/ExportadorCliente.lua", true))()
 ~~~
 
-3. Oculta el panel de Delta para ver **Exportador de lugar · Said v3**.
+3. Oculta el panel de Delta para ver **Exportador de lugar · Said v3.1**.
 4. Espera a que termine la copia de scripts y después el guardado del lugar. La ventana muestra la carpeta y el archivo final.
 
 Se necesitan **writefile**, **makefolder**, acceso HTTP y **loadstring**. Si falta **decompile**, intenta guardar el mapa y las interfaces sin recuperar el código de scripts. Si falta **setfenv**, el serializador usa el descompilador nativo, sin reutilizar la captura inicial.
@@ -29,6 +29,10 @@ La ubicación física de esa carpeta depende de Delta y del sistema operativo. E
 El lugar conserva la jerarquía de instancias. El contenido del jugador local se conserva como una instantánea en la carpeta **LocalPlayer** del lugar; puede requerir colocarlo en los servicios correspondientes para usarlo en otro proyecto. Los avatares de jugadores se omiten. Las carpetas del respaldo Lua se acortan cuando son demasiado profundas; las rutas completas permanecen en el reporte.
 
 ## Formato y errores
+
+**decompilation panicked** significa que el descompilador devolvió un fallo y no recuperó el código de ese script. La revisión 3.1 reconoce ese diagnóstico y otros mensajes de error conocidos cuando no contienen código, los cuenta como **fallos** y conserva el mensaje en el reporte y en el comentario del script del lugar. No los guarda como archivos Lua recuperados. Un texto igual dentro de una cadena o de un comentario de un script con código se conserva.
+
+Esta corrección evita contar mensajes de error como descompilaciones exitosas. No corrige el descompilador nativo de Delta ni reconstruye automáticamente los módulos afectados.
 
 Se intenta primero un **.rbxl binario**, sin compresión. Antes de escribir se comprueba su cabecera, los límites de sus bloques y el bloque final. Si hay **readfile**, también se compara lo escrito con todos los datos originales. Esto no sustituye abrir y revisar el lugar en Roblox Studio.
 
@@ -55,7 +59,9 @@ Revisiones utilizadas:
 
 El 10 de octubre de 2026 se añadió este envoltorio con interfaz, organización, reporte, caché de scripts y validación del archivo. Al cargar USSI se sustituyen sus cuatro rutas de código auxiliar por las revisiones anteriores y su ruta de recursos LinkedSource por el dominio oficial assetdelivery.roblox.com. USSI descarga además metadatos de Roblox para conocer las propiedades de cada clase.
 
+La revisión 3.1, del mismo día, añade la detección de diagnósticos devueltos como texto sin código.
+
 ## Verificación
 
-El envoltorio se comprueba con simulaciones de capacidades, cancelación, tiempos límite, archivos truncados, formatos incorrectos, fallos de escritura y alternativas de guardado. No se ha probado esta versión en una instalación real de Delta ni se ha abierto su resultado en Roblox Studio.
+El envoltorio pasó 39 simulaciones de capacidades, cancelación, tiempos límite, archivos truncados, formatos incorrectos, fallos de escritura, alternativas de guardado y diagnósticos de descompilación. Incluyen el mensaje reportado, variantes con comentarios y código válido que contiene esa frase. No se ha probado esta revisión en una instalación real de Delta ni se ha abierto su resultado en Roblox Studio.
 

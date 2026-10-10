@@ -1,4 +1,4 @@
--- Exportador de lugar y scripts visibles en el cliente, v3 (Said).
+-- Exportador de lugar y scripts visibles en el cliente, v3.1 (Said).
 -- Solo recupera contenido que existe en el cliente; no recupera codigo exclusivo del servidor.
 -- Serializador: UniversalSynSaveInstance https://discord.gg/wx4ThpAsmw
 -- USSI se descarga de una revision fija. Licencia y modificaciones: USSI_LICENSE.txt y README.md.
@@ -8,7 +8,7 @@ local USSI_COMMIT = "089986506e7ab9c50d7065d48b36e3bfbd5f78d7"
 local HELPERS_COMMIT = "beabe12be11b007777cfef0bffbe68dfb3f8b3b9"
 local BASE64_COMMIT = "468dde82bdba89176157dcec90ba503b7046f5b3"
 local LZ4_COMMIT = "57d869215b7a061121f5492ecff245989638816a"
-print("[Exportador Said] v3 iniciado. Preparando ventana...")
+print("[Exportador Said] v3.1 iniciado. Preparando ventana...")
 
 local environments = {}
 if type(getfenv) == "function" then
@@ -41,9 +41,9 @@ local basename = "Lugar_" .. tostring(game.PlaceId) .. "_" .. stamp .. "_" .. un
 local folder = "Exportacion_" .. tostring(game.PlaceId) .. "_" .. unique .. "_said"
 local reportPath = folder .. "/reporte.json"
 local report = {
-    version = 3, placeId = game.PlaceId, startedAt = os.time(), folder = folder,
+    version = 3, revision = "3.1", placeId = game.PlaceId, startedAt = os.time(), folder = folder,
     status = "running", total = 0, saved = 0, failed = 0, entries = {}, scanErrors = {},
-    scriptsStatus = "pending",
+    scriptsStatus = "pending", diagnosticFailures = 0,
     place = {status = "pending", requestedFormat = "rbxl", attempts = {}, uncachedScripts = 0},
     dependencies = {
         serializer = USSI_COMMIT, helpers = HELPERS_COMMIT,
@@ -95,7 +95,7 @@ local uiOk, uiError = pcall(function()
         Position = UDim2.new(0, 16, 0, 10), Size = UDim2.new(1, -32, 0, 28),
         BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 18,
         TextColor3 = Color3.fromRGB(110, 235, 147), TextXAlignment = Enum.TextXAlignment.Left,
-        Text = "Exportador de lugar · Said v3",
+        Text = "Exportador de lugar · Said v3.1",
     }, frame)
     statusLabel = create("TextLabel", {
         Position = UDim2.new(0, 16, 0, 43), Size = UDim2.new(1, -32, 0, 128),
@@ -194,6 +194,40 @@ local function excluded(instance)
     end
     return false
 end
+local diagnosticMarkers = {
+    "decompilation panicked", "decompiler panicked", "failed to decompile",
+    "decompilation failed", "decompiler timed out", "failed to get script bytecode",
+    "your executor does not have a decompiler",
+}
+local function isDecompilerDiagnostic(text)
+    local lowered, containsDiagnostic = text:lower(), false
+    for _, marker in ipairs(diagnosticMarkers) do
+        if lowered:find(marker, 1, true) then containsDiagnostic = true; break end
+    end
+    if not containsDiagnostic then return false end
+    -- Solo descarta diagnosticos sin codigo. Una cadena o comentario dentro
+    -- de un script con codigo no se considera un fallo del descompilador.
+    local remaining = text
+    while true do
+        remaining = remaining:gsub("^%s+", "")
+        if remaining:sub(1, 2) ~= "--" then break end
+        local equals, openingEnd = remaining:match("^%-%-%[(=*)%[()")
+        if equals then
+            local _, closingEnd = remaining:find("]" .. equals .. "]", openingEnd, true)
+            if not closingEnd then return true end
+            remaining = remaining:sub(closingEnd + 1)
+        else
+            local newline = remaining:find("[\r\n]")
+            remaining = newline and remaining:sub(newline + 1) or ""
+        end
+    end
+    if remaining == "" then return true end
+    local plain = remaining:lower()
+    for _, marker in ipairs(diagnosticMarkers) do
+        if plain:find(marker, 1, true) == 1 then return true end
+    end
+    return false
+end
 local function decompileOne(instance)
     local complete, success, result = false, false, nil
     local deadline = os.clock() + TIMEOUT
@@ -211,7 +245,11 @@ local function decompileOne(instance)
     if type(result) ~= "string" or not result:find("%S") then
         return false, "El descompilador no devolvio texto", "empty_result"
     end
-    return true, (result:gsub("%z", "\\0")), "saved"
+    result = result:gsub("%z", "\\0")
+    if isDecompilerDiagnostic(result) then
+        return false, result, "decompiler_diagnostic"
+    end
+    return true, result, "saved"
 end
 local function safeName(value)
     local name = tostring(value):gsub("[^%w_-]", "_"):sub(1, 20)
@@ -315,9 +353,13 @@ local function exportScripts()
                 report.scriptsStatus = "write_error"
             end
         else
-            sourceCache[candidate.instance] = "-- Codigo no recuperado: " .. outcome .. "\n"
+            sourceCache[candidate.instance] = "-- Codigo no recuperado: " .. outcome
+                .. "\n-- Diagnostico: " .. http:JSONEncode(result) .. "\n"
             entry.message = result
             report.failed = report.failed + 1
+            if outcome == "decompiler_diagnostic" then
+                report.diagnosticFailures = report.diagnosticFailures + 1
+            end
         end
         report.entries[#report.entries + 1] = entry
         if outcome == "timeout" or outcome == "cancelled" then

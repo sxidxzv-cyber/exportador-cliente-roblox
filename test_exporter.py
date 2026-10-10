@@ -14,6 +14,7 @@ local nativeprint = print
 local logs, files, folders, workers = {}, {}, {}, {}
 local now, nativeCalls, serializerCalls = 0, 0, 0
 local finalReport, cancelButton, label, compiledSource
+testSources = {}
 print = function(...) logs[#logs + 1] = table.concat({...}, " ") end
 warn = print
 os.clock = function() return now end
@@ -132,6 +133,18 @@ local function nativeDecompile(obj)
     if obj.stall then while true do task.wait(0.1) end end
     if scenario == "decompile_error" and obj == duplicate then error("decompiler failed") end
     if scenario == "empty_source" and obj == duplicate then return "" end
+    if obj == duplicate or scenario == "panic_all" then
+        if scenario == "panic_line" or scenario == "panic_all" then return "-- decompilation panicked" end
+        if scenario == "panic_header" then
+            return "-- Saved by UniversalSynSaveInstance (Join to Copy Games) https://discord.gg/wx4ThpAsmw\n\n-- decompilation panicked"
+        end
+        if scenario == "panic_block" then return "--[[ decompilation panicked\nstack trace ]] " end
+        if scenario == "panic_long_comment" then return "--[==[ Failed to decompile. Reason:\ninternal error ]==]" end
+        if scenario == "panic_crlf" then return "-- decompiler header\r\n\r\n-- decompilation panicked\r\n" end
+        if scenario == "panic_bare" then return "decompilation panicked" end
+        if scenario == "panic_literal_string" then return 'return "-- decompilation panicked"' end
+        if scenario == "panic_comment_then_code" then return "-- decompilation panicked\nreturn {value = 42}" end
+    end
     return "return {value = 42}"
 end
 local function write(path, data)
@@ -167,7 +180,7 @@ local serializerStub = [[
 return function(options)
     recordOptions(options)
     if options.Decompile then
-        for _, script in ipairs(testScripts) do decompile(script) end
+        for _, script in ipairs(testScripts) do testSources[script] = decompile(script) end
     end
     if testScenario == "cancel_place" then clickCancel() end
     if testScenario == "no_callback" then return end
@@ -305,6 +318,16 @@ elseif scenario == "script_write_error" then
     assert(nativeCalls == 1 and r.scriptsStatus == "write_error" and r.failed == 1 and r.remaining == 1)
 elseif scenario == "decompile_error" or scenario == "empty_source" then
     assert(nativeCalls == 2 and r.saved == 1 and r.failed == 1)
+elseif scenario:match("^panic_") and scenario ~= "panic_literal_string" and scenario ~= "panic_comment_then_code" then
+    local count = scenario == "panic_all" and 2 or 1
+    assert(nativeCalls == 2 and r.saved == 2 - count and r.failed == count, "diagnostics counted as recovered code")
+    assert(r.diagnosticFailures == count)
+    assert(r.scriptsStatus == "completed_with_errors" and r.status == "completed_with_errors")
+    local entry = r.entries[#r.entries]
+    assert(entry.status == "decompiler_diagnostic" and not entry.file)
+    assert(entry.message:find("panicked", 1, true) or entry.message:find("Failed to decompile", 1, true))
+    assert(testSources[duplicate]:find("-- Codigo no recuperado: decompiler_diagnostic", 1, true))
+    assert(testSources[duplicate]:find("-- Diagnostico:", 1, true))
 else
     assert(nativeCalls == 2 and r.saved == 2 and r.failed == 0, nativeCalls)
     assert(r.place.sourceStrategy == "initial_snapshot_cache")
@@ -327,6 +350,8 @@ CASES = [
     "missing_end", "trailing_bytes", "bad_both", "no_callback", "serializer_error",
     "timeout", "cancel_scripts", "cancel_place", "download_error", "compile_error",
     "revision_mismatch", "scan_error", "xml_declaration",
+    "panic_line", "panic_header", "panic_block", "panic_long_comment", "panic_crlf",
+    "panic_bare", "panic_all", "panic_literal_string", "panic_comment_then_code",
 ]
 
 def run():
